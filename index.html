@@ -103,13 +103,13 @@ const ICONS=['💧','🏋️','📖','☀️','🍌','🙂','📄','✉️','�
 const COLS=['#4f8cf7','#8b5cf6','#34c38f','#f5a524','#ef6b6b','#ec6fa5','#14b8c4','#f97316'];
 const QS=[null,{n:'I',t:'Urgent & Important',c:'#ef6b6b'},{n:'II',t:'Not Urgent & Important',c:'#f5a524'},{n:'III',t:'Urgent & Unimportant',c:'#4f8cf7'},{n:'IV',t:'Not Urgent & Unimportant',c:'#34c38f'}];
 /* ---------- state (single JSON object in localStorage) ---------- */
-const mk=o=>Object.assign({id:uid(),title:'',desc:'',cat:'today',q:null,date:TODAY(),rep:{t:'none',days:[]},subs:[],sd:{},sp:{},icon:'',color:'',target:0,unit:'',done:{},prog:{}},o);
+const mk=o=>Object.assign({id:uid(),title:'',desc:'',cat:'today',q:null,date:TODAY(),endDate:'',rep:{t:'none',days:[]},subs:[],sd:{},sp:{},icon:'',color:'',target:0,unit:'',done:{},prog:{}},o);
 function seed(){const T=TODAY(),r={t:'day',days:[]},s=o=>mk(Object.assign({sample:true},o));return[
 s({title:'Drink Water',cat:'habit',icon:'💧',color:'#4f8cf7',target:3,unit:'Cups',rep:r}),s({title:'Exercise',cat:'habit',icon:'🏋️',color:'#8b5cf6',rep:r,q:4}),
 s({title:'Read',cat:'habit',icon:'📖',color:'#34c38f',target:20,unit:'Pages',rep:r}),
 s({title:'Work Report',icon:'📄',color:'#ef6b6b',q:1}),s({title:'Check Emails',icon:'✉️',color:'#f5a524',q:2}),s({title:'Project Meeting',icon:'💻',color:'#14b8c4',q:1}),s({title:'Design Poster',icon:'🎨',color:'#8b5cf6',q:3}),
 s({title:'Write Project Brief',icon:'📄',color:'#ef6b6b',date:add(T,-2),q:2}),s({title:'Data Collection',icon:'📊',color:'#8b5cf6',date:add(T,-1),q:1}),
-s({title:'Visit Museum',cat:'long',icon:'🏠',color:'#ec6fa5',date:add(T,10),q:4}),s({title:'Marketing Plan',cat:'long',icon:'📊',color:'#4f8cf7',date:add(T,14),q:2}),s({title:'Plan a trip',cat:'long',icon:'✈️',color:'#14b8c4',date:add(T,30)})]}
+s({title:'Visit Museum',cat:'long',icon:'🏠',color:'#ec6fa5',endDate:add(T,10),q:4}),s({title:'Marketing Plan',cat:'long',icon:'📊',color:'#4f8cf7',endDate:add(T,14),q:2}),s({title:'Plan a trip',cat:'long',icon:'✈️',color:'#14b8c4',endDate:add(T,30)})]}
 const fresh=sample=>({tasks:sample?seed():[],cats:{habit:{n:'Habits',i:'🌱',c:'#34c38f'},today:{n:"Today's Tasks",i:'💼',c:'#4f8cf7'},long:{n:'Long Term',i:'🎯',c:'#f5a524'}},theme:'system',lastExport:null,created:TODAY(),ui:{}});
 function load(){try{const s=JSON.parse(localStorage.getItem(K));if(s&&Array.isArray(s.tasks))return Object.assign(fresh(false),s)}catch(e){}return null}
 function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
@@ -129,9 +129,10 @@ function subTog(t,d,sid){const k=key(t,d),sd=t.sd[k]=t.sd[k]||{},s=t.subs.find(x
  if(s.target){t.sp=t.sp||{};t.sp[k]=t.sp[k]||{};t.sp[k][sid]=sd[sid]?s.target:0}sync(t,k)}
 function mut(fn,msg){const s=JSON.stringify(S);fn();save();render();if(msg)toast(msg,s)}
 function lists(){const T=TODAY(),h=[],td=[],o=[],lg=[];S.tasks.forEach(t=>{
+ // long-term tasks: overdue only if endDate is set and passed without completion
+ if(t.cat==='long'){const ed=t.endDate;if(ed&&ed<T&&!dn(t,ed)){o.push(t)}else{lg.push(t)}return}
  if(!rec(t)&&t.cat!=='habit'&&t.date<T&&!dn(t,t.date)){o.push(t);return}   // overdue = computed, never assigned
- if(t.cat==='habit'){occ(t,sel)&&h.push(t)}else if(t.cat==='today'){occ(t,sel)&&td.push(t)}
- else if(occ(t,sel)||(!rec(t)&&t.date>sel&&!dn(t,t.date)))lg.push(t)});return[h,td,o,lg]}
+ if(t.cat==='habit'){occ(t,sel)&&h.push(t)}else if(t.cat==='today'){occ(t,sel)&&td.push(t)}});return[h,td,o,lg]}
 function streak(){const T=TODAY();let d=T,n=0,min=S.tasks.reduce((a,t)=>t.date<a?t.date:a,T);
  for(let i=0;i<800&&d>=min;i++,d=add(d,-1)){const hs=S.tasks.filter(t=>t.cat==='habit'&&occ(t,d));
   if(!hs.length)continue;if(hs.every(t=>dn(t,d)))n++;else if(d!==T)break}return n}
@@ -141,12 +142,14 @@ function mstats(y,m){const T=TODAY(),N=new Date(y,m+1,0).getDate(),c={habit:[0,0
 /* ---------- views ---------- */
 const bnDue=()=>S.lastExport?dsince(S.lastExport)>=30:dsince(S.created)>=30;
 const bn=()=>bnDue()?`<div class=bn>💾 It's been 30+ days since your last backup. <button class=lk data-a=bk>Back up now</button></div>`:'';
-function row(t){const d=sel,k=key(t,d),x=dn(t,d),sb=[],sd=t.sd[k]||{},sp=(t.sp||{})[k]||{},op=OPEN.has(t.id)&&t.subs.length;
+function row(t){const isLong=t.cat==='long',d=isLong?(t.endDate||TODAY()):sel,k=key(t,d),x=dn(t,d),sb=[],sd=t.sd[k]||{},sp=(t.sp||{})[k]||{},op=OPEN.has(t.id)&&t.subs.length;
  if(t.target)sb.push(`${t.prog[k]||0} / ${t.target} ${E(t.unit)}`);
  if(t.subs.length)sb.push(`${t.subs.filter(s=>sd[s.id]).length}/${t.subs.length} subtasks`);
- if(!rec(t)&&t.date<TODAY()&&!x)sb.push('Due '+fd(t.date));
+ if(isLong&&t.endDate)sb.push('Due '+fd(t.endDate));
+ else if(!rec(t)&&t.date<TODAY()&&!x)sb.push('Due '+fd(t.date));
  return `<div class=row data-id=${t.id} data-d=${d} data-a=rowtap><button class="cb ${x?'on':''}" data-a=tog aria-label="Complete"></button><i class=ic style="background:${col(t)}26">${ico(t)}</i><div class=rt><b class="${x?'dn':''}">${E(t.title)}</b>${sb.length?`<small>${sb.join(' · ')}</small>`:''}</div><button class="chv ${op?'op':''} ${t.subs.length?'':'nz'}" data-a=xp aria-label="Show subtasks">›</button></div>`
  +(op?t.subs.map(s=>{const y=sd[s.id];return `<div class=srow data-id=${t.id} data-d=${d} data-sid=${s.id} data-a=subtap><button class="cb ${y?'on':''}" data-a=subtog aria-label="Tick"></button><div class=rt><b class="${y?'dn':''}">${E(s.t)}</b>${s.target?`<small>${sp[s.id]||0} / ${s.target} ${E(s.unit)}</small>`:''}</div></div>`}).join(''):'')}
+
 const sec=(id,n,i,c,l,em)=>{const op=!S.ui[id];return `<section class=card><button class=sh data-a=sec data-v=${id}><i class=ci style="background:${c}26">${i}</i><b>${E(n)}</b><em class="${op?'':'cl'}">⌄</em></button>${op?(l.map(row).join('')||`<p class=empty>${em}</p>`):''}</section>`};
 function today(){const T=TODAY(),[h,td,o,lg]=lists(),C=S.cats,dt=pd(sel),mon=add(sel,-((dt.getDay()+6)%7));let wk='';
  for(let i=0;i<7;i++){const d=add(mon,i);wk+=`<button class="dy ${d===sel?'sel':''} ${d===T?'td':''}" data-a=day data-v=${d}><small>${DN[(i+1)%7]}</small><b>${pd(d).getDate()}</b></button>`}
@@ -190,9 +193,8 @@ function taskSheet(){const t=D.t;return `<div class=sh-h><b>${D.isNew?'Create Ta
 <h4>Subtasks <small>(optional)</small></h4>
 ${t.subs.map((s,i)=>`<div class=sub><button class="cb ${D.sdone[s.id]?'on':''}" data-a=stg data-v=${i} aria-label="Tick"></button><input class=in data-si=${i} value="${E(s.t)}" placeholder="Subtask"><button class=x data-a=srm data-v=${i} aria-label="Remove">✕</button></div><div class="row2 ssm"><input type=number step=any min=0 inputmode=decimal class=in data-sf="${i}.target" placeholder="Amount (optional)" value="${s.target||''}"><input class=in data-sf="${i}.unit" placeholder="Unit" value="${E(s.unit)}"></div>`).join('')}
 <button class="btn ghost" data-a=sadd>＋ Add subtask</button>
-<h4>Date & Repeat</h4><label class=fld>Date<input type=date class=in data-f=date value="${t.date}"></label>
-<div class=chips>${[['none','Never'],['day','Every day'],['week','Weekly'],['month','Monthly']].map(([v,l])=>chip('rep',v,l,t.rep.t===v)).join('')}</div>
-${t.rep.t==='week'?`<div class=chips>${[1,2,3,4,5,6,0].map(d=>chip('wd',d,DN[d],t.rep.days.includes(d))).join('')}</div>`:''}
+<h4>Date & Repeat${t.cat==='long'?' <small>(not needed for long-term tasks)</small>':''}</h4>${t.cat==='long'?`<label class=fld>End Date <small>(optional)</small><input type=date class=in data-f=endDate value="${t.endDate||''}"></label>`:`<label class=fld>Date<input type=date class=in data-f=date value="${t.date}"></label>`}
+${t.cat!=='long'?`<div class=chips>${[['none','Never'],['day','Every day'],['week','Weekly'],['month','Monthly']].map(([v,l])=>chip('rep',v,l,t.rep.t===v)).join('')}</div>${t.rep.t==='week'?`<div class=chips>${[1,2,3,4,5,6,0].map(d=>chip('wd',d,DN[d],t.rep.days.includes(d))).join('')}</div>`:''}`:''}
 <h4>Category</h4><div class=chips>${Object.entries(S.cats).map(([k,c])=>chip('cat',k,c.i+' '+E(c.n),t.cat===k,`--c:${c.c}`)).join('')}</div>
 <h4>Priority <small>(optional)</small></h4><div class=chips>${chip('q',0,'None',!t.q)}${[1,2,3,4].map(n=>chip('q',n,QS[n].n+' · '+QS[n].t,t.q===n,`--c:${QS[n].c}`)).join('')}</div>
 <h4>Icon & color</h4><div class=chips>${ICONS.map(i=>chip('ic',i,i,t.icon===i)).join('')}</div><div>${COLS.map(c=>`<button class="dot ${t.color===c?'on':''}" data-a=co data-v="${c}" style="background:${c}" aria-label="Color"></button>`).join('')}</div>
@@ -246,7 +248,7 @@ ok:()=>{const f=pend;pend=null;closeSheet();f&&f()}};
 document.addEventListener('click',e=>{if(lp){lp=false;e.preventDefault();return}
  if(e.target.id==='ov')return closeSheet();const b=e.target.closest('[data-a]');b&&A[b.dataset.a]&&A[b.dataset.a](b.dataset.v,b,e)});
 document.addEventListener('input',e=>{const el=e.target,f=el.dataset.f;
- if(f&&D){if(f==='date'&&!el.value)return;D.t[f]=f==='target'?Math.max(0,+el.value||0):el.value;el.classList.remove('err')}
+ if(f&&D){if(f==='date'&&!el.value)return;D.t[f]=f==='target'?Math.max(0,+el.value||0):el.value;el.classList.remove('err');if(f==='cat')resheet(taskSheet)}
  if(el.dataset.si!==undefined&&D)D.t.subs[el.dataset.si].t=el.value;
  if(el.dataset.sf&&D){const[i,p]=el.dataset.sf.split('.');D.t.subs[i][p]=p==='target'?Math.max(0,+el.value||0):el.value}
  if(el.dataset.cf){const[k,p]=el.dataset.cf.split('.');S.cats[k][p]=el.value;save();render()}});
